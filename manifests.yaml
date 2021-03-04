@@ -20,9 +20,9 @@ spec:
       containers:
         - image: nginx-image-name ## this is just an example. Here, the image name is the actual frontend nginx image
           name: nginx
-        volumeMounts:
-        - mountPath: " <Give path>"
-          name: nginx-volume
+          volumeMounts:
+          - mountPath: " <Give path>"
+            name: nginx-volume
           ports:
             - containerPort: 80
               protocol: TCP
@@ -250,6 +250,7 @@ spec:
           ports:
             - containerPort: 5432
               protocol: TCP
+          ## Database environment variables could still be from a configMap or secret
           env:
           - name: POSTGRES_USER
             value: "app-user"
