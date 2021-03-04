@@ -1,5 +1,6 @@
----
 
+### FRONTEND
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,6 +20,9 @@ spec:
       containers:
         - image: nginx-image-name ## this is just an example. Here, the image name is the actual frontend nginx image
           name: nginx
+        volumeMounts:
+        - mountPath: " <Give path>"
+          name: nginx-volume
           ports:
             - containerPort: 80
               protocol: TCP
@@ -30,7 +34,80 @@ spec:
               value: "app-user"
             - name: POSTGRES_PASSWORD
               value: "password123"
+          volumes:  ## ConfigMap is mounted into deployment as a volume
+            - name: nginx-config
+              configMap:
+                name: configmap
 
+           - name: nginx-secret
+             secret:
+               secretName: secret
+
+           - name: nginx-volume
+             persistentVolumeClaim:
+               claimName: nginx-volume
+
+
+### Create ConfigMap to contain data or configurations that could be used by nginx. The same configMap can be used by the tomcat application
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: configmap
+data:
+  application.configurations: |
+    key1=value1
+    key2=value2 ### And so on
+
+### Create secret object to store confidential info
+
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secret
+data:
+  username: bXktYXBw
+  password: Mzk1MjgkdmRnN0pi
+  ### And so on
+## Note that the configMaps and secrets can be created from a file as well. It depends on the client requirements. The devops guys should know.
+
+## Create persistent volume and volume Claim for use by frontend
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nginx-volume
+  labels:
+    type: nginx-ebs-volume
+spec:
+  capacity:
+    storage: 3Gi
+  accessModes:
+    - ReadWriteOnce
+  awsElasticBlockStore:
+    volumeID: <YOUR EBS VOLUME ID HERE>
+    fsType: xfs
+
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: nginx-volume-claim
+    labels:
+       type: nginx-ebs-volume
+spec:
+  accessModes:
+    - ReadWriteOnce
+resources:
+  requests:
+    storage: 2Gi
+   selector:
+    matchLabels:
+      type: nginx-ebs-volume
+## IGNORE the services since you will be using service mersh    
 ### Expose the frontend using nodePort service
 ---
 apiVersion: v1
@@ -46,6 +123,9 @@ spec:
      protocol: TCP
   selector:
     tier: frontend
+
+
+## MIDTIER      
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -66,17 +146,67 @@ spec:
       containers:
         - image: tomcat-image-name ## this is just an example. Here, the image name is the actual frontend nginx image
           name: nginx
+          volumeMounts:
+          - mountPath: "<Give path>"
+            name: nginx-volume
           ports:
             - containerPort: 80
               protocol: TCP
-          ## Add small env variables to establish connection to database. Complex set up could be done in a configMap or secret
+          ## Read environment variables and non-confidential information from a config Map and confidential info from a secret.
           env:
-            - name: POSTGRES_DB_HOST
-              value: "postgres-service.cluster.local" ## the service is  created separately to expose the database port
-            - name: POSTGRES_USER
-              value: "app-user"
-            - name: POSTGRES_PASSWORD
-              value: "password123"
+          - name: TOMCAT_ENV_VARIABLES
+            valueFrom:
+              configMapKeyRef:
+                name: configMap
+          volumes:
+          - name: tomcat-configmap
+            configMap:
+              name: configmap
+          - name: tomcat-secrets
+            secret:
+              secretName: secret
+
+           - name: tomcat-volume
+             persistentVolumeClaim:
+               claimName: tomcat-volume
+
+          
+## Create persistent volume and volume Claim for use by midtier
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: tomcat-volume
+  labels:
+    type: tomcat-ebs-volume
+spec:
+  capacity:
+    storage: 3Gi
+  accessModes:
+    - ReadWriteOnce
+  awsElasticBlockStore:
+    volumeID: <YOUR EBS VOLUME ID HERE>
+    fsType: xfs
+
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: tomcat-volume-claim
+    labels:
+       type: tomcat-ebs-volume
+spec:
+  accessModes:
+    - ReadWriteOnce
+resources:
+  requests:
+    storage: 2Gi
+   selector:
+    matchLabels:
+      type: tomcat-ebs-volume
+
+
 
 ## Expose the middle tier application to be accessible by frontend
 
