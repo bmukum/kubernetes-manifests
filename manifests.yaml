@@ -1,0 +1,144 @@
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  labels:
+    tier: frontend
+
+spec:
+  selector:
+    matchLabels:
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        tier: frontend
+    spec:
+      containers:
+        - image: nginx-image-name ## this is just an example. Here, the image name is the actual frontend nginx image
+          name: nginx
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          ## Add small env variables to establish connection to database. Complex set up could be done in a configMap or secret
+          env:
+            - name: MIDTIER
+              value: "tomcat-service.cluster.local" ## Frontend uses this service to contact midtier application
+            - name: USER
+              value: "app-user"
+            - name: POSTGRES_PASSWORD
+              value: "password123"
+
+### Expose the frontend using nodePort service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    tier: frontend
+spec:
+  type: NodePort
+  ports:
+   - port: 80
+     protocol: TCP
+  selector:
+    tier: frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomcat
+  labels:
+    tier: midtier
+
+spec:
+  selector:
+    matchLabels:
+      tier: midtier
+  template:
+    metadata:
+      labels:
+        tier: midtier
+    spec:
+      containers:
+        - image: tomcat-image-name ## this is just an example. Here, the image name is the actual frontend nginx image
+          name: nginx
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          ## Add small env variables to establish connection to database. Complex set up could be done in a configMap or secret
+          env:
+            - name: POSTGRES_DB_HOST
+              value: "postgres-service.cluster.local" ## the service is  created separately to expose the database port
+            - name: POSTGRES_USER
+              value: "app-user"
+            - name: POSTGRES_PASSWORD
+              value: "password123"
+
+## Expose the middle tier application to be accessible by frontend
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tomcat-service
+  labels:
+    tier: midtier
+spec:
+  type: ClusterIP
+  ports:
+   - port: 80
+     protocol: TCP
+  selector:
+    tier: midtier
+
+## Set up backend database
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    tier: backend
+
+spec:
+  selector:
+    matchLabels:
+      tier: backend
+  template:
+    metadata:
+      labels:
+        tier: backend
+    spec:
+      containers:
+        - image: postgres ## this is just an example. Here, the image name is the actual frontend nginx image
+          name: postgres
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+          - name: POSTGRES_USER
+            value: "app-user"
+          - name: POSTGRES_PASSWORD
+            value: "password123"
+
+### Expose the postgres database to the middle tier application
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  labels:
+    tier: backend
+spec:
+  type: ClusterIP
+  ports:
+   - port: 5432
+     protocol: TCP
+  selector:
+    tier: backend
